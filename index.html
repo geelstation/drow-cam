@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hand Draw</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: #f0f0f0;
+            margin: 0;
+            padding: 0;
+        }
+        h1 {
+            margin-top: 20px;
+        }
+        #controls {
+            margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            width: 80%; /* تكبير لوحة التحكم */
+            justify-content: center; /* محاذاة مركزية */
+        }
+        #video-container {
+            width: 40%; /* تصغير حجم الفيديو */
+            margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        #canvas-container {
+            width: 80%; /* تكبير حجم لوحة الرسم */
+            margin-top: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            border: none;
+            background-color: #fff;
+            cursor: crosshair;
+            touch-action: none; /* تعطيل الإجراءات التلميسية الافتراضية */
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        .color-picker, .thickness-picker, .shape-picker {
+            margin-right: 10px;
+            font-size: 16px;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #fff;
+        }
+        .color-picker {
+            width: 50px;
+            height: 30px;
+        }
+        .thickness-picker {
+            width: 60px;
+        }
+        .shape-picker {
+            width: 100px;
+        }
+        #clear {
+            font-size: 16px;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 5px;
+            background-color: #ff4444;
+            color: #fff;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #clear:hover {
+            background-color: #cc0000;
+        }
+    </style>
+</head>
+<body>
+    <h1>رسم باستخدام حركة الإصبع</h1>
+    <div id="video-container">
+        <video id="video" autoplay playsinline width="100%"></video>
+    </div>
+    <div id="controls">
+        <label for="color">اختر لونًا:</label>
+        <input type="color" id="color" class="color-picker" value="#ff0000">
+        <label for="thickness">سمك الخط:</label>
+        <input type="number" id="thickness" class="thickness-picker" value="2" min="1" max="10">
+        <label for="shape">الشكل:</label>
+        <select id="shape" class="shape-picker">
+            <option value="line">خط</option>
+            <option value="dot">نقطة</option>
+            <option value="circle">دائرة</option>
+        </select>
+        <button id="clear">مسح اللوحة</button>
+    </div>
+    <div id="canvas-container">
+        <canvas id="canvas" width="640" height="480"></canvas>
+    </div>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const colorPicker = document.getElementById('color');
+        const thicknessPicker = document.getElementById('thickness');
+        const shapePicker = document.getElementById('shape');
+        const clearButton = document.getElementById('clear');
+
+        let drawing = false;
+        let lastX = null;
+        let lastY = null;
+        let drawingColor = colorPicker.value;
+        let lineWidth = thicknessPicker.value;
+        let shape = shapePicker.value;
+
+        async function getFingerPosition() {
+            // Replace with your actual endpoint to get finger position
+            const response = await fetch('/finger_position');
+            const data = await response.json();
+            return data;
+        }
+
+        function drawShape(x, y) {
+            ctx.strokeStyle = drawingColor;
+            ctx.lineWidth = lineWidth;
+
+            switch (shape) {
+                case 'line':
+                    if (lastX === null || lastY === null) {
+                        lastX = x;
+                        lastY = y;
+                        return;
+                    }
+                    ctx.beginPath();
+                    ctx.moveTo(lastX, lastY);
+                    ctx.lineTo(x, y);
+                    ctx.stroke();
+                    lastX = x;
+                    lastY = y;
+                    break;
+                case 'dot':
+                    ctx.beginPath();
+                    ctx.arc(x, y, lineWidth / 2, 0, 2 * Math.PI);
+                    ctx.fillStyle = drawingColor;
+                    ctx.fill();
+                    break;
+                case 'circle':
+                    ctx.beginPath();
+                    ctx.arc(x, y, lineWidth, 0, 2 * Math.PI);
+                    ctx.stroke();
+                    break;
+            }
+        }
+
+        async function trackFinger() {
+            const data = await getFingerPosition();
+            if (data.drawing) {
+                drawShape(data.x, data.y);
+            } else {
+                lastX = null;
+                lastY = null;
+            }
+            requestAnimationFrame(trackFinger);
+        }
+
+        async function startCamera() {
+            const constraints = {
+                audio: false,
+                video: {
+                    width: { ideal: 640 }, // تعديل عرض الفيديو
+                    height: { ideal: 480 } // تعديل ارتفاع الفيديو
+                }
+            };
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
+            } catch (err) {
+                console.error('Error accessing the camera:', err);
+            }
+        }
+
+        startCamera();
+        trackFinger();
+
+        colorPicker.addEventListener('change', () => {
+            drawingColor = colorPicker.value;
+        });
+
+        thicknessPicker.addEventListener('change', () => {
+            lineWidth = thicknessPicker.value;
+        });
+
+        shapePicker.addEventListener('change', () => {
+            shape = shapePicker.value;
+        });
+
+        clearButton.addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        });
+    </script>
+</body>
+</html>
